@@ -3,11 +3,13 @@ package lab7.Client.VehicleCollectionClient;
 import java.io.*;
 
 import lab7.Commands.*;
+import lab7.Essentials.Request;
 import lab7.Exceptions.CommandExecutionException;
 import lab7.Exceptions.ConnectionException;
 import lab7.Exceptions.EOFInputException;
 import lab7.Commands.CommandBuilder;
 import lab7.Commands.CommandExecutor;
+import lab7.Exceptions.InputException;
 import lab7.UserInput.UserInput;
 
 import java.util.ArrayList;
@@ -18,6 +20,9 @@ public class VehicleCollectionClient
 
     private static final ArrayList<Command> commandList = new ArrayList<>();
     private static final ArrayList<Command> allCommandList = new ArrayList<>();
+
+    private String user = null;
+    private String password = null;
 
 
     public void run() {
@@ -44,8 +49,14 @@ public class VehicleCollectionClient
                 Command command = commandBuilder.build();
 
                 if (!commandList.contains(command)) {
+                    if(command instanceof LogIn || command instanceof RegisterUser){
+                        SecurityCommand c = (SecurityCommand) command;
+                        user = c.getUser();
+                        password = c.getPassword();
+                    }
+
                     if (ClientConnectionHandler.isConnected()) {
-                        ClientConnectionHandler.write(command);
+                        ClientConnectionHandler.write(new Request(user, password, command));
                         System.out.println(ClientConnectionHandler.read());
                     }
                     else

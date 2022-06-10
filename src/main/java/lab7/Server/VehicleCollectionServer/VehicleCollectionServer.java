@@ -1,6 +1,7 @@
 package lab7.Server.VehicleCollectionServer;
 
 import lab7.Commands.*;
+import lab7.Essentials.Request;
 import lab7.Exceptions.CommandExecutionException;
 import lab7.Exceptions.EOFInputException;
 import lab7.UserInput.UserInput;
@@ -8,8 +9,14 @@ import lab7.UserInput.UserInput;
 import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,8 +29,14 @@ public class VehicleCollectionServer {
     final ArrayList<Command> commandList = new ArrayList<>();
     final ArrayList<Command> clientCommandList = new ArrayList<>();
 
+    private static String pepper = "J(3kW-.H;xq&[pfj";
+    private static Map<String, String> passwords = new HashMap<>();
+
+    static MessageDigest md;
+
     public void run() {
 
+        System.out.println("Welcome to the Vehicle Collection Server!");
         logger.info("Server initialization");
 
         String userHome = System.getProperty("user.home");
@@ -37,7 +50,8 @@ public class VehicleCollectionServer {
                 throw new RuntimeException("another instance is running");
             }
 
-            logger.info("Welcome to the Vehicle Collection Server!");
+            md = MessageDigest.getInstance("SHA-384");
+
             UserInput.setDefaultReader(new BufferedReader(new InputStreamReader(System.in)));
 
             final VehicleCollection collection = new VehicleCollection();
@@ -66,6 +80,8 @@ public class VehicleCollectionServer {
             clientCommandList.add(new FilterByType());
             clientCommandList.add(new RemoveGreaterKey());
             clientCommandList.add(new RemoveLower());
+            clientCommandList.add(new RegisterUser());
+            clientCommandList.add(new LogIn());
 
             ArrayList<Command> allCommandList = new ArrayList<>();
             allCommandList.addAll(commandList);
@@ -91,7 +107,7 @@ public class VehicleCollectionServer {
 
             ServerConnectionHandler.startServer();
 
-            logger.info("Server started");
+            logger.info("Server initialization completed");
             while(Exit.getRunFlag() && ServerConnectionHandler.isServerStarted()) {
 
                 if (!ServerConnectionHandler.isConnected()) {
@@ -110,15 +126,23 @@ public class VehicleCollectionServer {
                     try{
                         ServerConnectionHandler.update();
 
-                        Command command = (Command) ServerConnectionHandler.read();
-                        if(command != null) {
+                        Request request = (Request) ServerConnectionHandler.read();
+                        if(request != null) {
                             logger.info("Received command from client");
-                            if (command instanceof Exit)
-                                throw new CommandExecutionException("\tDeprecated command");
 
-                            logger.info("\tExecuting command");
-                            ServerConnectionHandler.write(executor.execute(command));
-                            logger.info("\tResponse send to client");
+                            if(isUserRegistered(request) || request.getInfo() instanceof RegisterUser) {
+                                Command command = (Command) request.getInfo();
+                                if (command instanceof Exit)
+                                    throw new CommandExecutionException("\tDeprecated command");
+
+                                logger.info("\tExecuting command");
+                                ServerConnectionHandler.write(executor.execute(command));
+                                logger.info("\tResponse sent to client");
+                            }
+                            else {
+                                ServerConnectionHandler.write("Not registered user\n");
+                                logger.info("\tUser is not registered");
+                            }
                         }
                     } catch (Exception e) {
                         logger.error("Error occurred while executing client`s command: " + e.getMessage());
@@ -147,9 +171,30 @@ public class VehicleCollectionServer {
             UserInput.removeReader();
             logger.info("Goodbye!");
 
-        } catch (IOException e) {
-            System.out.println(e);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            logger.error(e);
         }
+    }
+
+    public static String registerUser(String user, String password){
+        if(user == null || password == null) return "Username and password can not be null\n";
+        if(passwords.get(user) != null) return "User with this name already exists\n";
+
+        passwords.put(user, Arrays.toString(md.digest((password + pepper).getBytes(StandardCharsets.UTF_8))));
+
+        return "User registered\n";
+    }
+
+    private boolean isUserRegistered(Request request){
+        if(request.getUser() == null && request.getPassword() == null) return false;
+
+        try {
+            String hash = Arrays.toString(md.digest((request.getPassword() + pepper).getBytes(StandardCharsets.UTF_8)));
+            if (passwords.get(request.getUser()).equals(hash)) return true;
+        }catch (Exception e){
+            return false;
+        }
+        return false;
     }
 }
 

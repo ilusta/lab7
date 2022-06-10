@@ -8,18 +8,23 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-
 import lab7.Exceptions.InputException;
 import lab7.Exceptions.NullException;
-import lab7.Vehicle.Vehicle;
-import lab7.Vehicle.VehicleType;
+import lab7.Vehicle.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.sql.*;
 
 
 public class VehicleCollection {
 
     private static final Logger logger = LogManager.getLogger(VehicleCollectionServer.class);
+
+
+    //Connection connection = DriverManager.getConnection("helios.se.ifmo.ru");
+
+
+
 
     protected class vehicleWithKey{
         protected String key;
