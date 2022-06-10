@@ -1,9 +1,11 @@
 package lab7.Server.VehicleCollectionServer;
 
+import lab7.Server.Database.Database;
 import lab7.Server.VehicleCollectionServer.CSVParser.CSVParser;
 import lab7.Exceptions.CommandExecutionException;
 
 import java.io.*;
+import java.sql.Connection;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -13,18 +15,13 @@ import lab7.Exceptions.NullException;
 import lab7.Vehicle.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import java.sql.*;
 
 
 public class VehicleCollection {
 
     private static final Logger logger = LogManager.getLogger(VehicleCollectionServer.class);
 
-
-    //Connection connection = DriverManager.getConnection("helios.se.ifmo.ru");
-
-
-
+    private Connection connection;
 
     protected class vehicleWithKey{
         protected String key;
@@ -35,14 +32,19 @@ public class VehicleCollection {
         }
     }
 
+
+    public VehicleCollection(Connection connection) throws RuntimeException{
+        this.connection = connection;
+
+        this.collection = new LinkedHashMap<>();
+        this.creationDate = ZonedDateTime.now();
+
+        //load collection from db
+    }
+
     LinkedHashMap<String, Vehicle> collection;
     String fileName = null;
     private ZonedDateTime creationDate;
-
-    public VehicleCollection() {
-        this.collection = new LinkedHashMap<>();
-        this.creationDate = ZonedDateTime.now();
-    }
 
     public void setFileName(String fileName) throws NullException {
         if (fileName == null) throw new NullException("File name is NULL.");
