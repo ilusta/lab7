@@ -1,11 +1,9 @@
 package lab7.Server.VehicleCollectionServer;
 
-import lab7.Server.Database.Database;
-import lab7.Server.VehicleCollectionServer.CSVParser.CSVParser;
 import lab7.Exceptions.CommandExecutionException;
 
 import java.io.*;
-import java.sql.Connection;
+import java.sql.*;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -23,111 +21,57 @@ public class VehicleCollection {
 
     private Connection connection;
 
-    protected class vehicleWithKey{
-        protected String key;
-        protected Vehicle vehicle;
-        protected vehicleWithKey(String key, Vehicle vehicle){
-            this.key = key;
-            this.vehicle = vehicle;
-        }
-    }
+    private ArrayList<Vehicle> collection;
+    private ZonedDateTime creationDate;
 
 
     public VehicleCollection(Connection connection) throws RuntimeException{
         this.connection = connection;
-
-        this.collection = new LinkedHashMap<>();
+        this.collection = new ArrayList<>();
+        Vehicle.setCollection(collection);
         this.creationDate = ZonedDateTime.now();
 
-        //load collection from db
+        load();
     }
 
-    LinkedHashMap<String, Vehicle> collection;
-    String fileName = null;
-    private ZonedDateTime creationDate;
+    public void load(){
+        logger.info("Loading collection from database:");
+        collection.clear();
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT id, key, name, x, y, date, enginepower, numberofwheels, capacity, type, \"user\" from collection")) {
 
-    public void setFileName(String fileName) throws NullException {
-        if (fileName == null) throw new NullException("File name is NULL.");
-        this.fileName = fileName;
-    }
+            while (resultSet.next()) {
+                try {
+                    Long id = resultSet.getLong("id");
+                    String key = resultSet.getString("key");
+                    String name = resultSet.getString("name");
+                    Integer x = resultSet.getInt("x");
+                    Integer y = resultSet.getInt("y");
+                    if(resultSet.wasNull()) y = null;
+                    ZonedDateTime date = ZonedDateTime.parse(resultSet.getString("date"), DateTimeFormatter.ISO_ZONED_DATE_TIME);
+                    Double enginePower = resultSet.getDouble("enginepower");
+                    if(resultSet.wasNull()) enginePower = null;
+                    Long numberOfWheels = resultSet.getLong("numberofwheels");
+                    if(resultSet.wasNull()) numberOfWheels = null;
+                    Double capacity = resultSet.getDouble("capacity");
+                    VehicleType type = VehicleType.valueOf(resultSet.getString("type"));
+                    String user = resultSet.getString("user");
 
-    public void open() throws SecurityException, IOException, InputException, DateTimeParseException {
-        logger.info("Loading collection from " + fileName);
+                    collection.add(new Vehicle(key, id, name, x, y, date, enginePower, numberOfWheels, capacity, type, user));
 
-        InputStreamReader input = new InputStreamReader(new FileInputStream(fileName));
-        Set<Long> IDList = new HashSet<>();
-
-        if(input.ready())
-        try {
-            ArrayList<String> params = CSVParser.readLine(input);
-            if (params.size() < 1) throw new InputException("Argument missing.");
-            this.creationDate = ZonedDateTime.parse(params.get(0), DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        }
-        catch (Exception e) {
-            logger.error("Loading error. " + e.getMessage());
-        }
-
-        while(input.ready()) {
-            try {
-                ArrayList<String> params = CSVParser.readLine(input);
-                if(params.size() < 10) throw new InputException("Argument missing.");
-
-                Double p6;
-                Long p7;
-                Integer p4;
-                if (params.get(4).equals("")) p4 = null;
-                else p4 = Integer.parseInt(params.get(4));
-                if (params.get(6).equals("")) p6 = null;
-                else p6 = Double.parseDouble(params.get(6));
-                if (params.get(7).equals("")) p7 = null;
-                else p7 = Long.parseLong(params.get(7));
-
-                collection.put(params.get(0), new Vehicle(Long.parseLong(params.get(1)),
-                        params.get(2),
-                        Integer.parseInt(params.get(3)),
-                        p4,
-                        params.get(5),
-                        p6,
-                        p7,
-                        Double.parseDouble(params.get(8)),
-                        params.get(9),
-                        IDList));
-                IDList.add(Long.parseLong(params.get(1)));
+                    if(this.creationDate.compareTo(date) > 0) this.creationDate = date;
+                }
+                catch(Exception e){
+                    logger.error("\tError while loading vehicle from collection: " + e);
+                }
             }
-            catch (Exception e)
-            {
-                logger.error("Loading error. " + e.getMessage());
-            }
+            logger.info("\tLoaded " + collection.size() + " vehicles");
         }
-
-        input.close();
-        logger.info("Load completed: " + collection.size() + " vehicles loaded.");
+        catch (Exception e){
+            throw new RuntimeException("Unable to load collection from database: " + e);
+        }
     }
 
-    public String save() throws IOException {
-        BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(fileName));
-        StringBuilder data = new StringBuilder("\"" + this.getCreationDate().toString() + "\";\n");
-
-        Set<String> keys = this.collection.keySet();
-        for (String key : keys) {
-            String line[] = {key,
-                    String.valueOf(collection.get(key).getID()),
-                    String.valueOf(collection.get(key).getName()),
-                    String.valueOf(collection.get(key).getCoordinates().getXCoordinate()),
-                    String.valueOf(collection.get(key).getCoordinates().getYCoordinate()),
-                    String.valueOf(collection.get(key).getCreationDate()),
-                    String.valueOf(collection.get(key).getEnginePower()),
-                    String.valueOf(collection.get(key).getNumberOfWheels()),
-                    String.valueOf(collection.get(key).getCapacity()),
-                    String.valueOf(collection.get(key).getType())};
-            data.append(CSVParser.convertToLine(line));
-        }
-
-        output.write(data.toString().getBytes());
-        output.close();
-
-        return "Collection saved to " + fileName;
-    }
 
     public String show() throws CommandExecutionException {
         StringBuilder message = new StringBuilder("Vehicles in the collection:\n");
@@ -135,38 +79,50 @@ public class VehicleCollection {
         if(collection.isEmpty())
             message.append("\tCollection is empty\n");
         else {
-            Collection<String> keys = collection.keySet();
-            Collection<vehicleWithKey> list = new ArrayList<>();
-            for (String k : keys) list.add(new vehicleWithKey(k, collection.get(k)));
-
-            list.stream().sorted(Comparator.comparing(veh -> veh.vehicle)).forEach(veh ->
-                    message.append("\tKey=" + veh.key + ": " + veh.vehicle.toString() + "\n\n"));
+            collection.stream().sorted(Comparator.comparing(vehicle -> vehicle)).forEach(vehicle ->
+                    message.append("\t" + vehicle + "\n\n"));
         }
         return message.toString();
     }
 
-    public String insert(String newKey, Vehicle vehicle) throws CommandExecutionException {
-        Set<String> keys = this.collection.keySet();
-        Set<Long> IDList = new HashSet<>();
 
-        boolean flag = true;
-        for (String key : keys) {
-            IDList.add(this.collection.get(key).getID());
-            if (key.equals(newKey)) {
-                flag = false;
-            }
+    public String insert(Vehicle vehicle, String user) throws CommandExecutionException {
+        StringBuilder message = new StringBuilder("Inserting vehicle into collection:\n");
+
+        try(PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO " +
+                "collection(id, key, name, x, y, date, enginepower, numberofwheels, capacity, type, \"user\") VALUES (nextval('collection_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")){
+
+            preparedStatement.setString(1, vehicle.getKey());
+            preparedStatement.setString(2, vehicle.getName());
+            preparedStatement.setInt(3, vehicle.getCoordinates().getXCoordinate());
+            Integer y = vehicle.getCoordinates().getYCoordinate();
+            if(y != null) preparedStatement.setInt(4, y);
+            else preparedStatement.setNull(4, Types.INTEGER);
+            preparedStatement.setString(5, ZonedDateTime.now().format(DateTimeFormatter.ISO_ZONED_DATE_TIME));
+            Double ep = vehicle.getEnginePower();
+            if(ep != null) preparedStatement.setDouble(6, ep);
+            else preparedStatement.setNull(6, Types.DOUBLE);
+            Long nofw = vehicle.getNumberOfWheels();
+            if(nofw != null) preparedStatement.setLong(7, nofw);
+            else preparedStatement.setNull(7, Types.BIGINT);
+            preparedStatement.setDouble(8, vehicle.getCapacity());
+            preparedStatement.setString(9, vehicle.getType().name());
+            preparedStatement.setString(10, user);
+
+            preparedStatement.execute();
+
+            load();
         }
-
-        if (!flag) throw new CommandExecutionException("This key is already exists. ");
-
-        vehicle.serverVehicleUpdate(IDList);
-        this.collection.put(newKey, vehicle);
-
-        return "Vehicle inserted.";
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to add vehicle to collection: " + e);
+        }
+        message.append("\tDone\n");
+        return message.toString();
     }
 
-    public String update(Long ID, Vehicle vehicle) throws CommandExecutionException{
-        Set<String> keys = this.collection.keySet();
+
+    public String update(Vehicle vehicle, String user) throws CommandExecutionException{
+       /* Set<String> keys = this.collection.keySet();
 
         if(ID == null) throw new CommandExecutionException("ID can not be NULL. ");
 
@@ -179,12 +135,12 @@ public class VehicleCollection {
 
         if (key == null) throw new CommandExecutionException("Vehicle with id " + ID + " does not exist. ");
 
-        this.collection.get(key).update(vehicle);
-        return "Vehicle with ID " + ID + " is updated.\n";
+        this.collection.get(key).update(vehicle);*/
+        return "Vehicle with ID " + " is updated.\n";
     }
 
     public String removeKey(String removeKey) throws CommandExecutionException {
-        Set<String> keys = this.collection.keySet();
+        /*Set<String> keys = this.collection.keySet();
 
         String key = null;
         for (String k : keys) {
@@ -194,7 +150,7 @@ public class VehicleCollection {
         }
 
         if (key == null) throw new CommandExecutionException("Element with key " + removeKey + " does not exist. ");
-        this.collection.remove(key);
+        this.collection.remove(key);*/
         return "Element with key " + removeKey + " deleted. ";
     }
 
@@ -208,14 +164,15 @@ public class VehicleCollection {
     }
 
     public String getSumOfWheels(){
-        Collection<Vehicle> list = collection.values();
+        /*Collection<Vehicle> list = collection.values();
         Long sumOfWheels = list.stream().reduce(0L, (sum, vehicle) -> sum + vehicle.getNumberOfWheels(), Long::sum);
 
-        return "Sum of all wheels is " + sumOfWheels;
+        return "Sum of all wheels is " + sumOfWheels;*/
+        return "";
     }
 
     public String removeLower(Vehicle givenVehicle) throws CommandExecutionException{
-        StringBuilder message = new StringBuilder("Removing:\n");
+        /*StringBuilder message = new StringBuilder("Removing:\n");
 
         Collection<Vehicle> vehicles = collection.values();
         Object[] arr = vehicles.stream().filter(key -> (key.compareTo(givenVehicle) < 0)).toArray();
@@ -228,11 +185,12 @@ public class VehicleCollection {
             message.append("\t" + arr.length + " vehicles deleted\n");
         }else
             message.append("\tNo smaller vehicles in collection\n");
-        return message.toString();
+        return message.toString();*/
+        return "";
     }
 
     public String removeGreaterKey(String givenKey) throws CommandExecutionException{
-        StringBuilder message = new StringBuilder("Removing:\n");
+        /*StringBuilder message = new StringBuilder("Removing:\n");
 
         Collection<String> keys = collection.keySet();
         Object[] arr = keys.stream().filter(key -> (key.compareTo(givenKey) < 0)).toArray();
@@ -242,22 +200,24 @@ public class VehicleCollection {
             message.append("\t" + arr.length + " vehicles deleted\n");
         }else
             message.append("\tNo vehicles in collection with key greater than given\n");
-        return message.toString();
+        return message.toString();*/
+        return "";
     }
 
     public String maxByCoordinates() throws NullPointerException{
-        Collection<Vehicle> list = collection.values();
+        /*Collection<Vehicle> list = collection.values();
         Optional<Vehicle> opVehicle = list.stream().max(Comparator.comparing(Vehicle::getCoordinates));
 
         Vehicle vehicle = null;
         if(opVehicle.isPresent())
             vehicle = opVehicle.get();
 
-        return "Vehicle with biggest coordinates is " + vehicle;
+        return "Vehicle with biggest coordinates is " + vehicle;*/
+        return "";
     }
 
     public String filterByType(String givenType) throws NullPointerException, CommandExecutionException{
-        StringBuilder message = new StringBuilder("Filtering collection by given vehicle type:\n");
+        /*StringBuilder message = new StringBuilder("Filtering collection by given vehicle type:\n");
         try{
             VehicleType type = VehicleType.valueOf(givenType);
             Collection<Vehicle> list = collection.values();
@@ -271,7 +231,8 @@ public class VehicleCollection {
         } catch (Exception e){
             throw new CommandExecutionException("Wrong vehicle type. Select one of the following types:\n" + VehicleType.convertToString());
         }
-        return message.toString();
+        return message.toString();*/
+        return "";
     }
 
     public ZonedDateTime getCreationDate(){

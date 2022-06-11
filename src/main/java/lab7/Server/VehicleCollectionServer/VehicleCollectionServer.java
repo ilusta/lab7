@@ -72,21 +72,10 @@ public class VehicleCollectionServer {
             //Create vehicle collection and load values from database
             final VehicleCollection collection = new VehicleCollection(connection);
 
-
-            try {
-                final String lockfile = EnvVarReader.getValue("VEHICLE_COLLECTION_PATH");
-                collection.setFileName(lockfile);
-                collection.open();
-            } catch (Exception e) {
-                logger.error("Error occurred while reading file: " + e.getMessage());
-            }
-
             //Server commands
             commandList.add(new Help());
             commandList.add(new Exit());
             commandList.add(new History());
-            commandList.add(new Save());
-
             //Commands available to clients
             clientCommandList.add(new Info());
             clientCommandList.add(new Show());
@@ -107,7 +96,6 @@ public class VehicleCollectionServer {
             allCommandList.addAll(clientCommandList);
 
             Help.attachCommandList(allCommandList);
-            Save.attach(collection);
             Info.attach(collection);
             Show.attach(collection);
             Insert.attach(collection);
@@ -156,12 +144,15 @@ public class VehicleCollectionServer {
                                 if (command instanceof Exit)
                                     throw new CommandExecutionException("\tDeprecated command");
 
+                                if(command instanceof  SecurityCollectionCommand)
+                                    ((SecurityCollectionCommand) command).setUser(request.getUser());
+
                                 logger.info("\tExecuting command");
                                 ServerConnectionHandler.write(executor.execute(command));
                                 logger.info("\tResponse sent to client");
                             }
                             else {
-                                ServerConnectionHandler.write("Not registered user\n");
+                                ServerConnectionHandler.write("Error: Not registered user\n");
                                 logger.info("\tUser is not registered");
                             }
                         }
@@ -180,12 +171,6 @@ public class VehicleCollectionServer {
                     if (e instanceof EOFInputException) break;
                     logger.error("Error while executing command: " + e.toString());
                 }
-            }
-
-            try{
-                logger.info(collection.save());
-            } catch(Exception e){
-                logger.error("Error occurred while saving collection: " + e.getMessage());
             }
 
             database.close();

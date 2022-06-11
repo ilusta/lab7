@@ -10,11 +10,24 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Objects;
 import java.util.Set;
 import java.time.ZonedDateTime;
 
 public class Vehicle implements Comparable<Vehicle>, Serializable
 {
+    static ArrayList<Vehicle> collection;
+
+    static public void setCollection(ArrayList<Vehicle> collection) {Vehicle.collection = collection;}
+
+
+    public Vehicle() {
+
+    }
+
+    private String key;
     private Long id;
     private String name;
     private Coordinates coordinates;
@@ -23,19 +36,22 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
     private Long numberOfWheels;
     private Double capacity;
     private VehicleType type;
+    private String user;
 
-    public Vehicle(Long id,
+    public Vehicle(String key,
+                   Long id,
                    String name,
                    Integer x,
                    Integer y,
-                   String creationDate,
+                   ZonedDateTime creationDate,
                    Double enginePower,
                    Long numberOfWheels,
                    Double capacity,
-                   String type,
-                   Set<Long> IDList) throws InputException, DateTimeParseException
+                   VehicleType type,
+                   String user) throws InputException, DateTimeParseException
     {
-        setID(id, IDList);
+        setKey(key);
+        setID(id);
         setName(name);
         Coordinates coordinates = new Coordinates();
         coordinates.setXCoordinate(x);
@@ -46,17 +62,17 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
         setNumberOfWheels(numberOfWheels);
         setCapacity(capacity);
         setVehicleType(type);
+        setUser(user);
     }
 
-    public Vehicle(Set<Long> IDList) throws EOFInputException {
-        generateID(IDList);
-        setCreationTime();
+    public Vehicle(String key) throws EOFInputException, NullException {
         setVehicleParams();
+        setKey(key);
     }
 
-    public void serverVehicleUpdate(Set<Long> IDList){
-        generateID(IDList);
-        setCreationTime();
+    public Vehicle(Long ID) throws EOFInputException, InputException {
+        setVehicleParams();
+        setID(ID);
     }
 
     public void update() throws EOFInputException {
@@ -149,7 +165,7 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
             try {
                 System.out.println("Possible vehicle types:");
                 System.out.println(VehicleType.convertToString());
-                setVehicleType(UserInput.getString("type"));
+                setVehicleType(VehicleType.valueOf(UserInput.getString("type")));
                 flag = true;
             }
             catch (IOException | NullException | IllegalArgumentException e) {
@@ -157,36 +173,29 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
             }
         }
 
+        creationDate = ZonedDateTime.now();
+
         System.out.println("Done!");
     }
 
-    private void generateID(Set<Long> IDList) {
-        boolean flag = true;
-        Long id = (long)0;
+    private void setKey(String key) throws NullException {
+        if(key == null || key.equals("")) throw new NullException("Key can not be NULL or empty");
 
-        while (flag) {
-            id = (long)(Math.random() * 10000.0);
-            flag = false;
-            for (Long existingID : IDList) {
-                if (existingID.equals(id)) {
-                    flag = true;
-                }
-            }
+        if(collection != null) {
+            Object[] arr = collection.stream().filter(vehicle -> vehicle.getKey().equals(key)).toArray();
+            if (arr.length > 0) throw new NullException("Vehicle with this key is already in collection");
         }
-        this.id = id;
+
+        this.key = key;
     }
 
-    private void setID(Long ID, Set<Long> IDList) throws InputException{
+    private void setID(Long ID) throws InputException {
+        if(ID == null) throw new NullException("ID can not be NULL");
 
-        if(ID == null) new NullException("ID can not be NULL.");
-
-        boolean flag = false;
-        for (Long existingID : IDList) {
-            if (existingID.equals(ID)) {
-                flag = true;
-            }
+        if(collection != null) {
+            Object[] arr = collection.stream().filter(vehicle -> vehicle.getID().equals(ID)).toArray();
+            if (arr.length > 0) throw new InputException("Vehicle with this ID is already in collection");
         }
-        if(flag == true) throw new InputException("ID " + ID + " already exists.");
 
         this.id = ID;
     }
@@ -196,8 +205,8 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
         this.name = name;
     }
 
-    private void setCreationTime() {
-        this.creationDate = ZonedDateTime.now();
+    private void setCreationTime(ZonedDateTime dateTime) {
+        this.creationDate = dateTime;
     }
 
     private void setCreationTime(String input) throws DateTimeParseException {
@@ -224,9 +233,17 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
         this.capacity = capacity;
     }
 
-    private void setVehicleType(String type) throws NullException, IllegalArgumentException {
+    private void setVehicleType(VehicleType type) throws NullException, IllegalArgumentException {
         if (type == null) throw new NullException("Vehicle type can not be NULL");
-        this.type = VehicleType.valueOf(type);
+        this.type = type;
+    }
+
+    private void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getKey() {
+        return this.key;
     }
 
     public Long getID() {
@@ -261,9 +278,15 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
         return this.type;
     }
 
+    public String getUser() {
+        return user;
+    }
+
     @Override
     public String toString() {
-        return "Vehicle{id=" + this.id +
+        return "Vehicle{user=" + this.user +
+                ", key=" + this.key +
+                ", id=" + this.id +
                 ", name=" + this.name +
                 ", coordinates=" + this.coordinates.toString() +
                 ", creation=" + this.creationDate.toString() +

@@ -44,8 +44,8 @@ public class ServerConnectionHandler {
                 serverSocketChannel.socket().bind(inetAddress);
                 serverSocketChannel.configureBlocking(false);
 
-                txBuffer = ByteBuffer.allocate(1000);
-                rxBuffer = ByteBuffer.allocate(1000);
+                txBuffer = ByteBuffer.allocate(2000);
+                rxBuffer = ByteBuffer.allocate(2000);
 
                 logger.info("Server is started at " + inetAddress.getAddress() + ":" + serverSocketChannel.socket().getLocalPort());
                 serverStarted = true;
@@ -113,9 +113,13 @@ public class ServerConnectionHandler {
     public static void disconnect(){
         logger.info("Disconnecting from clients:");
         try {
-            socketChannel.close();
             inputStream.close();
             outputStream.close();
+            socketChannel.close();
+            txBuffer.clear();
+            rxBuffer.clear();
+            baos.close();
+            bais.close();
             connected = false;
             logger.info("\tDisconnected");
         }

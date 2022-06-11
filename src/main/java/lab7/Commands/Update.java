@@ -9,7 +9,7 @@ import lab7.Vehicle.Vehicle;
 import java.util.HashSet;
 import java.util.Set;
 
-public class Update extends CollectionCommand
+public class Update extends SecurityCollectionCommand
 {
 
     @Override
@@ -25,7 +25,6 @@ public class Update extends CollectionCommand
         return "[ID] {vehicle} | Updates element in collection by it`s ID.";
     }
 
-    private Long ID;
     private Vehicle vehicle;
 
     public static void attach(VehicleCollection collection){
@@ -35,6 +34,7 @@ public class Update extends CollectionCommand
     @Override
     public Command build(String[] params) throws InputException, EOFInputException{
         if (params.length < 2) throw new InputException("Argument is missing");
+        Long ID;
         try {
             ID = Long.parseLong(params[1]);
         }
@@ -43,13 +43,12 @@ public class Update extends CollectionCommand
             throw new InputException("Impossible vehicle ID");
         }
 
-        Set<Long> IDList = new HashSet<>();
-        vehicle = new Vehicle((Set) IDList);
+        vehicle = new Vehicle(ID);
         return this;
     }
 
     @Override
     public String execute() throws CommandExecutionException{
-        return collection.update(ID, vehicle) + "\n";
+        return collection.update(vehicle, this.getUser()) + "\n";
     }
 }

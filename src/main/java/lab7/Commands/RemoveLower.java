@@ -41,7 +41,7 @@ public class RemoveLower extends CollectionCommand
     @Override
     public Command build(String[] params) throws InputException, EOFInputException {
         Set<Long> IDList = new HashSet<>();
-        vehicle = new Vehicle((Set) IDList);
+        vehicle = new Vehicle();
 
         return new RemoveLower(this);
     }

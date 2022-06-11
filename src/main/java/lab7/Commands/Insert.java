@@ -9,16 +9,8 @@ import lab7.Vehicle.Vehicle;
 import java.util.HashSet;
 import java.util.Set;
 
-public class Insert extends CollectionCommand
+public class Insert extends SecurityCollectionCommand
 {
-
-    public Insert(){
-    }
-
-    private Insert(Insert cmd){
-        this.key = cmd.key;
-        this.vehicle = cmd.vehicle;
-    }
 
     @Override
     public String getName() {
@@ -33,7 +25,6 @@ public class Insert extends CollectionCommand
         return "[key] {vehicle} | Inserts new element to collection with given key.";
     }
 
-    private String key;
     private Vehicle vehicle;
 
     public static void attach(VehicleCollection collection){
@@ -43,14 +34,13 @@ public class Insert extends CollectionCommand
     @Override
     public Command build(String[] params) throws InputException, EOFInputException{
         if (params.length < 2) throw new InputException("Argument is missing");
-        key = params[1];
-        Set<Long> IDList = new HashSet<>();
-        vehicle = new Vehicle((Set) IDList);
-        return new Insert(this);
+        String key = params[1];
+        vehicle = new Vehicle(key);
+        return this;
     }
 
     @Override
     public String execute() throws CommandExecutionException {
-        return collection.insert(key, vehicle);
+        return collection.insert(vehicle, this.getUser());
     }
 }

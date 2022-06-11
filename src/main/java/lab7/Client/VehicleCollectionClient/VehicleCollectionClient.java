@@ -73,7 +73,7 @@ public class VehicleCollectionClient
                     }
                     break;
                 }
-                System.out.println("Error: " + e.getMessage());
+                System.out.println("Error: " + e);
                 if(e instanceof ConnectionException) disconnect();
             }
         }
