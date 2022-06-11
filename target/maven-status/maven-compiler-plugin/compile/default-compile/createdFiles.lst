@@ -5,7 +5,6 @@ lab7\Commands\RemoveKey.class
 lab7\Vehicle\Vehicle.class
 lab7\Commands\FilterByType.class
 lab7\Server\VehicleCollectionServer\VehicleCollection.class
-lab7\Commands\Save.class
 lab7\Exceptions\NullException.class
 lab7\Commands\Update.class
 lab7\Server\VehicleCollectionServer\EnvVarReader.class
@@ -30,13 +29,11 @@ lab7\Commands\Connect.class
 lab7\Commands\Help.class
 lab7\Commands\SumOfNumberOfWheels.class
 lab7\Exceptions\CommandExecutionException.class
-lab7\Server\VehicleCollectionServer\CSVParser\CSVParser.class
 lab7\Commands\MaxByCoordinates.class
 lab7\Commands\Info.class
 lab7\Exceptions\InputException.class
 lab7\Commands\Disconnect.class
 lab7\Commands\RemoveGreaterKey.class
-lab7\Server\VehicleCollectionServer\VehicleCollection$vehicleWithKey.class
 lab7\Commands\CommandExecutor.class
 lab7\Exceptions\ConnectionException.class
 lab7\UserInput\BufferedFileReader.class

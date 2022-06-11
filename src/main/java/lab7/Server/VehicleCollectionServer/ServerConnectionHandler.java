@@ -1,35 +1,39 @@
 package lab7.Server.VehicleCollectionServer;
 
+import lab7.Client.VehicleCollectionClient.ClientConnectionHandler;
+import lab7.Essentials.SignedRequest;
 import lab7.Exceptions.EOFInputException;
+import lab7.UserInput.BufferedFileReader;
 import lab7.UserInput.UserInput;
 
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.sql.Connection;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.apache.commons.lang3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import static java.lang.Thread.sleep;
+
 public class ServerConnectionHandler {
 
-    private static final Logger logger = LogManager.getLogger(VehicleCollectionServer.class);
+    private static final Logger logger = LogManager.getLogger(ServerConnectionHandler.class);
 
-    static boolean connected = false;
     static boolean serverStarted = false;
-    static private ObjectInputStream inputStream = null;
-    static private ObjectOutputStream outputStream = null;
     static private SocketChannel socketChannel = null;
     static private ServerSocketChannel serverSocketChannel = null;
-    static private ByteArrayOutputStream baos;
-    static private ByteArrayInputStream bais;
-
-    static private ByteBuffer rxBuffer;
-    static private ByteBuffer txBuffer;
-
+    static private ExecutorService executor = null;
+    static Map<SocketAddress, CommunicationWithClient> communicators = new HashMap<>();
+    static Queue<SignedRequest> requestsQueue = new LinkedList<>();
 
     public static void startServer(){
         while (true) {
@@ -44,11 +48,13 @@ public class ServerConnectionHandler {
                 serverSocketChannel.socket().bind(inetAddress);
                 serverSocketChannel.configureBlocking(false);
 
-                txBuffer = ByteBuffer.allocate(2000);
-                rxBuffer = ByteBuffer.allocate(2000);
-
                 logger.info("Server is started at " + inetAddress.getAddress() + ":" + serverSocketChannel.socket().getLocalPort());
                 serverStarted = true;
+
+                communicators.clear();
+
+                executor = Executors.newCachedThreadPool();
+
                 break;
             } catch (Exception e) {
                 if (e.getClass() == EOFInputException.class){
@@ -66,53 +72,114 @@ public class ServerConnectionHandler {
     }
 
 
-    public static void listenForConnection(){
+    public static SocketAddress acceptConnection(){
         try {
-
             socketChannel = serverSocketChannel.accept();
-            if(socketChannel != null) {
+            if (socketChannel != null) {
+                logger.info("Client connecting...");
                 socketChannel.configureBlocking(false);
+                SocketAddress clientID = socketChannel.getRemoteAddress();
 
-                logger.info("Client connecting");
-                logger.info("\tChannel has been created: " + socketChannel);
+                CommunicationWithClient communication;
+                communication = new CommunicationWithClient(socketChannel);
 
-                baos = new ByteArrayOutputStream();
-                txBuffer.clear();
-                rxBuffer.clear();
+                communicators.put(clientID, communication);
+                executor.execute(communication);
 
-                outputStream = new ObjectOutputStream(baos);
-                outputStream.flush();
-                txBuffer.put(baos.toByteArray());
-                baos.reset();
-
-                bais = new ByteArrayInputStream(rxBuffer.array());
-                inputStream = null;
-                do {
-                    try {
-                        update();
-                        inputStream = new ObjectInputStream(bais);
-                        rxBuffer.position(rxBuffer.limit());
-                        rxBuffer.compact();
-                    }catch (Exception e) {
-                        inputStream.close();
-                    }
-                } while(inputStream == null);
-
-                logger.info("\tClient has connected");
-                connected = true;
-            }
-        } catch (Exception e) {
-            connected = false;
-            if (!(e instanceof SocketTimeoutException)) {
-                logger.error("\tUnable to accept connection: " + e);
+                return clientID;
             }
         }
+        catch(Exception e){
+            if (e instanceof SocketTimeoutException);
+            else if(e instanceof IOException){
+                logger.error("Error occurred while connecting to client: " + e);
+            }else{
+                logger.error("Server error: " + e);
+                e.printStackTrace();
+                //serverStarted = false;
+            }
+        }
+        return null;
     }
 
-
-    public static void disconnect(){
-        logger.info("Disconnecting from clients:");
+    public static void close() {
         try {
+            serverSocketChannel.close();
+            Collection<CommunicationWithClient> cList = communicators.values();
+            for(CommunicationWithClient c : cList){
+                c.disconnect();
+            }
+        }
+        catch (Exception e){}
+    }
+
+    public static void update(){
+        Collection<CommunicationWithClient> cList = communicators.values();
+        for(CommunicationWithClient c : cList){
+            c.read();
+        }
+    }
+}
+
+
+
+class CommunicationWithClient implements Runnable{
+
+    private static final Logger logger = LogManager.getLogger(CommunicationWithClient.class);
+
+    private ObjectInputStream inputStream;
+    private ObjectOutputStream outputStream;
+    private ByteArrayOutputStream baos;
+    private ByteArrayInputStream bais;
+    private ByteBuffer rxBuffer;
+    private ByteBuffer txBuffer;
+    private SocketChannel socketChannel;
+    private SocketAddress clientID;
+
+
+    public CommunicationWithClient(SocketChannel socketChannel) throws IOException {
+        this.socketChannel = socketChannel;
+        clientID = socketChannel.getRemoteAddress();
+
+        logger.info("\tChannel has been created: " + socketChannel);
+
+        txBuffer = ByteBuffer.allocate(2000);
+        rxBuffer = ByteBuffer.allocate(2000);
+        txBuffer.clear();
+        rxBuffer.clear();
+
+
+        baos = new ByteArrayOutputStream();
+        outputStream = new ObjectOutputStream(baos);
+        outputStream.flush();
+        txBuffer.put(baos.toByteArray());
+        baos.reset();
+
+        bais = new ByteArrayInputStream(rxBuffer.array());
+        try {
+            Thread.sleep(500);
+        }catch (Exception e){}
+        //inputStream = null;
+        //do {
+            update();
+        //} while(rxBuffer.get(0) != -84 && rxBuffer.get(1) != -19 && rxBuffer.get(3) != 0 && rxBuffer.get(3) != 5);
+
+        try {
+            inputStream = new ObjectInputStream(bais);
+            rxBuffer.position(rxBuffer.limit());
+            rxBuffer.compact();
+        }catch (Exception e) {
+            disconnect();
+            throw new RuntimeException("Unable to connect");
+        }
+
+        logger.info("\tClient connected");
+    }
+
+    public void disconnect(){
+        logger.info("Disconnecting from client");
+        try {
+            ServerConnectionHandler.communicators.remove(clientID);
             inputStream.close();
             outputStream.close();
             socketChannel.close();
@@ -120,61 +187,29 @@ public class ServerConnectionHandler {
             rxBuffer.clear();
             baos.close();
             bais.close();
-            connected = false;
             logger.info("\tDisconnected");
         }
         catch(Exception e){
-            logger.error("\tError occurred while closing socket: " + e.getMessage());
+            if(e instanceof NullPointerException);
+            else logger.error("\tError occurred while closing socket: " + e.getMessage());
         }
     }
 
-
-    public static boolean isConnected(){
-        return connected;
-    }
-
-
-    public static void update(){
-        try {
-            int n = socketChannel.read(rxBuffer);
-            if (n == -1) throw new IOException("Unable to read");
-
-            txBuffer.flip();
-            n = socketChannel.write(txBuffer);
-            if (n == -1) throw new IOException("Unable to send");
-            txBuffer.compact();
-        }
-        catch (Exception e){
-            if (e instanceof IOException || e instanceof NullPointerException) {
-                logger.error("Connection with client is lost: " + e.getMessage());
-                disconnect();
-            } else {
-                logger.error("Error occurred while communicating with client: " + e.getMessage());
-            }
-        }
-    }
-
-
-    public static void write(Object obj){
+    public void write(Object obj){
         try {
             outputStream.writeObject(obj);
             outputStream.reset();
             outputStream.flush();
             int written = 0;
             while(baos.size() - written > 0){
-                /*baos.reset();
-                outputStream.writeObject("Unable to send response. Message is too big.\n");
-                outputStream.reset();
-                outputStream.flush();
-                */
-                int s = baos.size();
-                int r = txBuffer.remaining();
-                int a = Math.min(s-written, r);
-                txBuffer.put(baos.toByteArray(), written, a);
-                written += a;
-                update();
+                synchronized (this.txBuffer) {
+                    int s = baos.size();
+                    int r = txBuffer.remaining();
+                    int a = Math.min(s - written, r);
+                    txBuffer.put(baos.toByteArray(), written, a);
+                    written += a;
+                }
             }
-            //txBuffer.put(baos.toByteArray());
             baos.reset();
         }
         catch(Exception e){
@@ -183,35 +218,82 @@ public class ServerConnectionHandler {
     }
 
 
-    public static Object read(){
+    public Object read(){
         Object obj = null;
         try {
-            rxBuffer.flip();
-            if(rxBuffer.remaining() != 0) {
+            synchronized (this.rxBuffer) {
+                rxBuffer.flip();
+                if (rxBuffer.remaining() != 0) {
+                    byte[] bytes = new byte[rxBuffer.remaining() + 6];
+                    for (int i = rxBuffer.position(); i < rxBuffer.limit(); i++)
+                        bytes[i + 4] = rxBuffer.get(i);
 
-                /*if(rxBufer. = -84 &&
-                bytes[1] = -19;
-                bytes[2] = 0;
-                bytes[3] = 5;)
-                */
-                byte[] bytes = new byte[rxBuffer.remaining()+6];
-                for (int i = rxBuffer.position(); i < rxBuffer.limit(); i++)
-                    bytes[i+4] = rxBuffer.get(i);
-
-                bytes[0] = -84;
-                bytes[1] = -19;
-                bytes[2] = 0;
-                bytes[3] = 5;
-                obj = SerializationUtils.deserialize(bytes);
+                    bytes[0] = -84;
+                    bytes[1] = -19;
+                    bytes[2] = 0;
+                    bytes[3] = 5;
+                    obj = SerializationUtils.deserialize(bytes);
+                    ServerConnectionHandler.requestsQueue.add(new SignedRequest(clientID, obj));
+                }
+                rxBuffer.position(rxBuffer.limit());
+                rxBuffer.compact();
             }
-            rxBuffer.position(rxBuffer.limit());
-            rxBuffer.compact();
         }
         catch(Exception e){
             logger.error("Error occurred while deserializing object: " + e.getMessage());
         }
-
         return obj;
     }
 
+    public void run(){
+        while(true) {
+            try {
+                int n;
+                synchronized (this.rxBuffer) {
+                    n = socketChannel.read(rxBuffer);
+                    if (n == -1) throw new IOException("Unable to read");
+                }
+                synchronized (this.txBuffer) {
+                    txBuffer.flip();
+                    n = socketChannel.write(txBuffer);
+                    if (n == -1) throw new IOException("Unable to send");
+                    txBuffer.compact();
+                }
+
+            } catch (Exception e) {
+                if (e instanceof IOException || e instanceof NullPointerException) {
+                    logger.error("Connection with client is lost: " + e.getMessage());
+                    disconnect();
+                    break;
+                } else {
+                    logger.error("Error occurred while communicating with client: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    public void update(){
+            try {
+                int n;
+                synchronized (this.rxBuffer) {
+                    n = socketChannel.read(rxBuffer);
+                    if (n == -1) throw new IOException("Unable to read");
+                }
+                synchronized (this.txBuffer) {
+                    txBuffer.flip();
+                    n = socketChannel.write(txBuffer);
+                    if (n == -1) throw new IOException("Unable to send");
+                    txBuffer.compact();
+                }
+
+            } catch (Exception e) {
+                if (e instanceof IOException || e instanceof NullPointerException) {
+                    logger.error("Connection with client is lost: " + e.getMessage());
+                    disconnect();
+                    //break;
+                } else {
+                    logger.error("Error occurred while communicating with client: " + e.getMessage());
+                }
+            }
+    }
 }

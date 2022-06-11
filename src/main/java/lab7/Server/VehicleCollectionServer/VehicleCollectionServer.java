@@ -3,23 +3,22 @@ package lab7.Server.VehicleCollectionServer;
 import lab7.Commands.*;
 import lab7.Essentials.ConfigurationFileReader.ConfigurationFileReader;
 import lab7.Essentials.Request;
+import lab7.Essentials.SignedRequest;
 import lab7.Exceptions.CommandExecutionException;
 import lab7.Exceptions.EOFInputException;
 import lab7.Server.Database.Database;
 import lab7.UserInput.UserInput;
 
 import java.io.*;
+import java.net.SocketAddress;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.locks.Lock;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -119,48 +118,38 @@ public class VehicleCollectionServer {
             logger.info("Server initialization completed");
             while(Exit.getRunFlag() && ServerConnectionHandler.isServerStarted()) {
 
-                if (!ServerConnectionHandler.isConnected()) {
-                    ServerConnectionHandler.listenForConnection();
-
-                    if(ServerConnectionHandler.isConnected()) {
-                        logger.info("Sending available commands to client");
-                        for (Object c : clientCommandList) {
-                            ServerConnectionHandler.write(c);
-                            ServerConnectionHandler.update();
-                        }
-                        ServerConnectionHandler.write("End");
-                        logger.info("\tDone");
-                    }
-                } else {
-                    try{
-                        ServerConnectionHandler.update();
-
-                        Request request = (Request) ServerConnectionHandler.read();
-                        if(request != null) {
-                            logger.info("Received command from client");
-
-                            if(isUserRegistered(request) || request.getInfo() instanceof RegisterUser) {
-                                Command command = (Command) request.getInfo();
-                                if (command instanceof Exit)
-                                    throw new CommandExecutionException("\tDeprecated command");
-
-                                if(command instanceof  SecurityCollectionCommand)
-                                    ((SecurityCollectionCommand) command).setUser(request.getUser());
-
-                                logger.info("\tExecuting command");
-                                ServerConnectionHandler.write(executor.execute(command));
-                                logger.info("\tResponse sent to client");
-                            }
-                            else {
-                                ServerConnectionHandler.write("Error: Not registered user\n");
-                                logger.info("\tUser is not registered");
-                            }
-                        }
+                //Reconnect to database if connection is lost
+                if (connection.isClosed()) {
+                    try {
+                        logger.error("Connection with database lost. Reconnecting...");
+                        database.close();
+                        database = new Database("jdbc:postgresql://localhost:5432/collection", dbUser, dbPassword);
+                        connection = database.getConnection();
                     } catch (Exception e) {
-                        logger.error("Error occurred while executing client`s command: " + e.getMessage());
+                        logger.error("Error occurred: " + e);
                     }
                 }
 
+                //Listen for new connection
+                SocketAddress clientID = ServerConnectionHandler.acceptConnection();
+                if (clientID != null) {
+
+                    logger.info("Sending available commands to client " + clientID);
+                    for (Object c : clientCommandList) {
+                        ServerConnectionHandler.communicators.get(clientID).write(c);
+                    }
+                    ServerConnectionHandler.communicators.get(clientID).write("End");
+                    logger.info("\tDone");
+                }
+
+                ServerConnectionHandler.update();
+
+                //Execute client`s commands
+                while (ServerConnectionHandler.requestsQueue.size() > 0) {
+                    new Thread(new executeClientsCommand(ServerConnectionHandler.requestsQueue.poll(), executor)).start();
+                }
+
+                //Execute server`s commands
                 try {
                     if (UserInput.available()) {
                         logger.info("Reading local command");
@@ -173,8 +162,10 @@ public class VehicleCollectionServer {
                 }
             }
 
+
+            //free resources
             database.close();
-            ServerConnectionHandler.disconnect();
+            ServerConnectionHandler.close();
             UserInput.removeReader();
             logger.info("Goodbye!");
 
@@ -182,6 +173,50 @@ public class VehicleCollectionServer {
             logger.error(e);
         }
     }
+
+
+
+    private class executeClientsCommand implements Runnable{
+        SignedRequest signedRequest;
+        CommandExecutor executor;
+
+        public executeClientsCommand(SignedRequest signedRequest, CommandExecutor executor){
+            this.signedRequest = signedRequest;
+            this.executor = executor;
+        }
+
+        public void run(){
+            try{
+                SocketAddress clientID = signedRequest.getClientID();
+                Request request = (Request) signedRequest.getRequest();
+
+                if(request != null) {
+                    logger.info("Received command from client " + clientID);
+
+                    if(isUserRegistered(request) || request.getInfo() instanceof RegisterUser) {
+                        Command command = (Command) request.getInfo();
+                        if (command instanceof Exit)
+                            throw new CommandExecutionException("\tDeprecated command");
+
+                        if(command instanceof  SecurityCollectionCommand)
+                            ((SecurityCollectionCommand) command).setUser(request.getUser());
+
+                        logger.info("\tExecuting command");
+                        ServerConnectionHandler.communicators.get(clientID).write(executor.execute(command));
+                        logger.info("\tResponse sent to client " + clientID);
+                    }
+                    else {
+                        ServerConnectionHandler.communicators.get(clientID).write("Error: Not registered user\n");
+                        logger.info("\tUser is not registered");
+                    }
+                }
+            } catch (Exception e) {
+                //ServerConnectionHandler.write("Error occurred while executing command\n");
+                logger.error("Error occurred while executing client`s command: " + e.getMessage());
+            }
+        }
+    }
+
 
     public static String registerUser(String user, String password) throws CommandExecutionException{
         if(user == null || password == null) return "Username and password can not be null\n";
