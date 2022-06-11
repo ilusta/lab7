@@ -4,7 +4,7 @@ import lab7.Exceptions.CommandExecutionException;
 import lab7.Server.VehicleCollectionServer.VehicleCollection;
 
 
-public class Clear extends CollectionCommand
+public class Clear extends SecurityCollectionCommand
 {
 
     @Override
@@ -31,7 +31,7 @@ public class Clear extends CollectionCommand
 
     @Override
     public String execute() throws CommandExecutionException {
-        return collection.clear() + "\n";
+        return collection.clear(this.getUser()) + "\n";
     }
 
 }

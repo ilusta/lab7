@@ -9,16 +9,8 @@ import lab7.Vehicle.Vehicle;
 import java.util.HashSet;
 import java.util.Set;
 
-public class RemoveLower extends CollectionCommand
+public class RemoveLower extends SecurityCollectionCommand
 {
-
-    public RemoveLower(){
-    }
-
-    private RemoveLower(RemoveLower cmd){
-        this.vehicle = cmd.vehicle;
-    }
-
     @Override
     public String getName() {
         return "remove_lower";
@@ -40,14 +32,12 @@ public class RemoveLower extends CollectionCommand
 
     @Override
     public Command build(String[] params) throws InputException, EOFInputException {
-        Set<Long> IDList = new HashSet<>();
         vehicle = new Vehicle();
-
-        return new RemoveLower(this);
+        return this;
     }
 
     @Override
     public String execute() throws CommandExecutionException {
-        return collection.removeLower(vehicle) + "\n";
+        return collection.removeLower(vehicle, this.getUser()) + "\n";
     }
 }

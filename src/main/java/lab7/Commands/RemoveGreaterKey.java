@@ -5,17 +5,8 @@ import lab7.Exceptions.EOFInputException;
 import lab7.Exceptions.InputException;
 import lab7.Server.VehicleCollectionServer.VehicleCollection;
 
-public class RemoveGreaterKey extends CollectionCommand
+public class RemoveGreaterKey extends SecurityCollectionCommand
 {
-
-    public RemoveGreaterKey(){
-
-    }
-
-    private RemoveGreaterKey(RemoveGreaterKey cmd){
-        this.removeKey = cmd.removeKey;
-    }
-
     @Override
     public String getName() {
         return "remove_greater_key";
@@ -40,11 +31,11 @@ public class RemoveGreaterKey extends CollectionCommand
         if (params.length < 2) throw new InputException("Key is missing");
         removeKey = params[1];
 
-        return new RemoveGreaterKey(this);
+        return this;
     }
 
     @Override
     public String execute() throws CommandExecutionException {
-        return collection.removeGreaterKey(removeKey) + "\n";
+        return collection.removeGreaterKey(removeKey, this.getUser()) + "\n";
     }
 }

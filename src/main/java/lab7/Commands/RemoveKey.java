@@ -5,7 +5,7 @@ import lab7.Exceptions.EOFInputException;
 import lab7.Exceptions.InputException;
 import lab7.Server.VehicleCollectionServer.VehicleCollection;
 
-public class RemoveKey extends CollectionCommand
+public class RemoveKey extends SecurityCollectionCommand
 {
 
     @Override
@@ -37,6 +37,6 @@ public class RemoveKey extends CollectionCommand
 
     @Override
     public String execute() throws CommandExecutionException {
-        return collection.removeKey(removeKey) + "\n";
+        return collection.removeKey(removeKey, this.getUser()) + "\n";
     }
 }

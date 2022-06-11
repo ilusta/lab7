@@ -79,8 +79,7 @@ public class VehicleCollection {
         if(collection.isEmpty())
             message.append("\tCollection is empty\n");
         else {
-            collection.stream().sorted(Comparator.comparing(vehicle -> vehicle)).forEach(vehicle ->
-                    message.append("\t" + vehicle + "\n\n"));
+            collection.stream().sorted(Comparator.comparing(vehicle -> vehicle)).forEach(vehicle -> message.append("\t" + vehicle + "\n\n"));
         }
         return message.toString();
     }
@@ -116,112 +115,179 @@ public class VehicleCollection {
         catch (Exception e){
             throw new CommandExecutionException("Unable to add vehicle to collection: " + e);
         }
-        message.append("\tDone\n");
+        message.append("\tVehicle inserted\n");
         return message.toString();
     }
 
 
     public String update(Vehicle vehicle, String user) throws CommandExecutionException{
-       /* Set<String> keys = this.collection.keySet();
+        StringBuilder message = new StringBuilder("Updating vehicle:\n");
 
-        if(ID == null) throw new CommandExecutionException("ID can not be NULL. ");
+        Long givenID = vehicle.getID();
+        Optional<Vehicle> foundVehicle = collection.stream().filter(veh -> veh.getID().equals(givenID)).findFirst();
 
-        String key = null;
-        for (String k : keys) {
-            if (ID.equals(this.collection.get(k).getID())) {
-                key = k;
-            }
+        if(!foundVehicle.isPresent())
+            throw new CommandExecutionException("No vehicle with ID=" + givenID +" in collection");
+        if(!foundVehicle.get().getUser().equals(user))
+            throw new CommandExecutionException("Vehicle with ID=" + givenID +" belongs to another user");
+
+        try(PreparedStatement preparedStatement = connection.prepareStatement("UPDATE collection" +
+                "SET name=?, x=?, y=?, date=?, enginepower=?, numberofwheels=?, capacity=?, type=? " +
+                "WHERE (id=? AND \"user\" =?);")){
+
+            preparedStatement.setString(1, vehicle.getName());
+            preparedStatement.setInt(2, vehicle.getCoordinates().getXCoordinate());
+            Integer y = vehicle.getCoordinates().getYCoordinate();
+            if(y != null) preparedStatement.setInt(3, y);
+            else preparedStatement.setNull(3, Types.INTEGER);
+            preparedStatement.setString(4, ZonedDateTime.now().format(DateTimeFormatter.ISO_ZONED_DATE_TIME));
+            Double ep = vehicle.getEnginePower();
+            if(ep != null) preparedStatement.setDouble(5, ep);
+            else preparedStatement.setNull(5, Types.DOUBLE);
+            Long nofw = vehicle.getNumberOfWheels();
+            if(nofw != null) preparedStatement.setLong(6, nofw);
+            else preparedStatement.setNull(6, Types.BIGINT);
+            preparedStatement.setDouble(7, vehicle.getCapacity());
+            preparedStatement.setString(8, vehicle.getType().name());
+            preparedStatement.setLong(9, givenID);
+            preparedStatement.setString(10, user);
+
+            preparedStatement.execute();
+
+            load();
+        }
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to update vehicle: " + e);
         }
 
-        if (key == null) throw new CommandExecutionException("Vehicle with id " + ID + " does not exist. ");
-
-        this.collection.get(key).update(vehicle);*/
-        return "Vehicle with ID " + " is updated.\n";
+        message.append("\tVehicle with ID=" + givenID + " is updated.\n");
+        return message.toString();
     }
 
-    public String removeKey(String removeKey) throws CommandExecutionException {
-        /*Set<String> keys = this.collection.keySet();
 
-        String key = null;
-        for (String k : keys) {
-            if (removeKey.equals(k)) {
-                key = k;
-            }
+    public String removeKey(String givenKey, String user) throws CommandExecutionException {
+        StringBuilder message = new StringBuilder("Removing vehicle:\n");
+
+        Optional<Vehicle> foundVehicle = collection.stream().filter(veh -> veh.getKey().equals(givenKey)).findFirst();
+
+        if(!foundVehicle.isPresent())
+            throw new CommandExecutionException("No vehicle with KEY=" + givenKey +" in collection");
+        if(!foundVehicle.get().getUser().equals(user))
+            throw new CommandExecutionException("Vehicle with KEY=" + givenKey +" belongs to another user");
+
+        try(PreparedStatement preparedStatement = connection.prepareStatement("DELETE FROM collection WHERE (key=? AND \"user\"=?);")){
+
+            preparedStatement.setString(1, givenKey);
+            preparedStatement.setString(2, user);
+            preparedStatement.execute();
+
+            load();
+        }
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to remove vehicle: " + e);
         }
 
-        if (key == null) throw new CommandExecutionException("Element with key " + removeKey + " does not exist. ");
-        this.collection.remove(key);*/
-        return "Element with key " + removeKey + " deleted. ";
+        message.append("\tVehicle with KEY=" + givenKey + " deleted.\n");
+        return message.toString();
     }
 
-    public String clear() {
-        this.collection.clear();
-        return "Collection is cleared";
+
+    public String clear(String user) throws CommandExecutionException {
+        StringBuilder message = new StringBuilder("Clearing collection:\n");
+
+        try(PreparedStatement preparedStatement = connection.prepareStatement("DELETE FROM collection WHERE \"user\"=?;")){
+            preparedStatement.setString(1, user);
+            preparedStatement.execute();
+            load();
+        }
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to remove vehicles: " + e);
+        }
+
+        message.append("\tvehicles owned by " + user + " deleted\n");
+        message.append("\t" + collection.size() + " vehicles left in collection\n");
+        return message.toString();
     }
+
 
     public Integer getSize() {
         return this.collection.size();
     }
 
+
     public String getSumOfWheels(){
-        /*Collection<Vehicle> list = collection.values();
-        Long sumOfWheels = list.stream().reduce(0L, (sum, vehicle) -> sum + vehicle.getNumberOfWheels(), Long::sum);
-
-        return "Sum of all wheels is " + sumOfWheels;*/
-        return "";
+        Long sumOfWheels = collection.stream().reduce(0L, (sum, vehicle) -> sum + vehicle.getNumberOfWheels(), Long::sum);
+        return "Sum of all wheels is " + sumOfWheels;
     }
 
-    public String removeLower(Vehicle givenVehicle) throws CommandExecutionException{
-        /*StringBuilder message = new StringBuilder("Removing:\n");
 
-        Collection<Vehicle> vehicles = collection.values();
-        Object[] arr = vehicles.stream().filter(key -> (key.compareTo(givenVehicle) < 0)).toArray();
+    public String removeLower(Vehicle givenVehicle, String user) throws CommandExecutionException{
+        StringBuilder message = new StringBuilder("Removing smaller vehicles:\n");
 
-        if (arr.length > 0) {
-            for (String key : collection.keySet())
-                for (Object veh : arr)
-                    if(collection.get(key).equals(veh)) collection.remove(key);
+        Long[] IDArr = collection.stream().filter(veh -> ((veh.compareTo(givenVehicle) < 0) && veh.getUser().equals(user))).map(Vehicle::getID).toArray(Long[]::new);
+        if(IDArr.length == 0) throw new CommandExecutionException("No smaller vehicles owned by " + user + " in collection");
 
-            message.append("\t" + arr.length + " vehicles deleted\n");
-        }else
-            message.append("\tNo smaller vehicles in collection\n");
-        return message.toString();*/
-        return "";
+        int counter = 0;
+        try(PreparedStatement preparedStatement = connection.prepareStatement("DELETE FROM collection WHERE (\"user\"=? AND id=?)")){
+
+            preparedStatement.setString(1, user);
+            for(Long id : IDArr){
+                preparedStatement.setLong(2, id);
+                preparedStatement.execute();
+                counter++;
+            }
+        }
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to remove vehicles: " + e);
+        }
+
+        load();
+        message.append("\tRemoved " + counter + " vehicles owned by " + user + "\n");
+        message.append("\t" + collection.size() + " vehicles left in collection\n");
+        return message.toString();
     }
 
-    public String removeGreaterKey(String givenKey) throws CommandExecutionException{
-        /*StringBuilder message = new StringBuilder("Removing:\n");
 
-        Collection<String> keys = collection.keySet();
-        Object[] arr = keys.stream().filter(key -> (key.compareTo(givenKey) < 0)).toArray();
+    public String removeGreaterKey(String givenKey, String user) throws CommandExecutionException{
+        StringBuilder message = new StringBuilder("Removing vehicles with greater keys:\n");
 
-        if (arr.length > 0) {
-            for (Object key : arr) collection.remove(key);
-            message.append("\t" + arr.length + " vehicles deleted\n");
-        }else
-            message.append("\tNo vehicles in collection with key greater than given\n");
-        return message.toString();*/
-        return "";
+        Long[] IDArr = collection.stream().filter(veh -> ((veh.getKey().compareTo(givenKey) > 0) && veh.getUser().equals(user))).map(Vehicle::getID).toArray(Long[]::new);
+        if(IDArr.length == 0) throw new CommandExecutionException("No vehicles with greater keys owned by " + user + " in this collection");
+
+        int counter = 0;
+        try(PreparedStatement preparedStatement = connection.prepareStatement("DELETE FROM collection WHERE (\"user\"=? AND id=?)")){
+
+            preparedStatement.setString(1, user);
+            for(Long id : IDArr){
+                preparedStatement.setLong(2, id);
+                preparedStatement.execute();
+                counter++;
+            }
+        }
+        catch (Exception e){
+            throw new CommandExecutionException("Unable to remove vehicles: " + e);
+        }
+
+        load();
+        message.append("\tRemoved " + counter + " vehicles owned by " + user + "\n");
+        message.append("\t" + collection.size() + " vehicles left in collection\n");
+        return message.toString();
     }
 
     public String maxByCoordinates() throws NullPointerException{
-        /*Collection<Vehicle> list = collection.values();
-        Optional<Vehicle> opVehicle = list.stream().max(Comparator.comparing(Vehicle::getCoordinates));
+        Optional<Vehicle> opVehicle = collection.stream().max(Comparator.comparing(Vehicle::getCoordinates));
 
-        Vehicle vehicle = null;
         if(opVehicle.isPresent())
-            vehicle = opVehicle.get();
-
-        return "Vehicle with biggest coordinates is " + vehicle;*/
-        return "";
+            return "Vehicle with biggest coordinates is:\n\t" + opVehicle.get();
+        else
+            return "There is no vehicle with biggest coordinates in collection";
     }
 
     public String filterByType(String givenType) throws NullPointerException, CommandExecutionException{
-        /*StringBuilder message = new StringBuilder("Filtering collection by given vehicle type:\n");
+        StringBuilder message = new StringBuilder("Filtering collection by type " + givenType + ":\n");
         try{
             VehicleType type = VehicleType.valueOf(givenType);
-            Collection<Vehicle> list = collection.values();
-            Object[] arr = list.stream().filter(vehicle -> vehicle.getType().equals(type)).toArray();
+            Object[] arr = collection.stream().filter(vehicle -> vehicle.getType().equals(type)).toArray();
 
             if (arr.length > 0)
                 for(Object obj : arr) message.append("\t" + obj + "\n\n");
@@ -231,8 +297,7 @@ public class VehicleCollection {
         } catch (Exception e){
             throw new CommandExecutionException("Wrong vehicle type. Select one of the following types:\n" + VehicleType.convertToString());
         }
-        return message.toString();*/
-        return "";
+        return message.toString();
     }
 
     public ZonedDateTime getCreationDate(){

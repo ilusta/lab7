@@ -22,11 +22,6 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
 
     static public void setCollection(ArrayList<Vehicle> collection) {Vehicle.collection = collection;}
 
-
-    public Vehicle() {
-
-    }
-
     private String key;
     private Long id;
     private String name;
@@ -63,6 +58,10 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
         setCapacity(capacity);
         setVehicleType(type);
         setUser(user);
+    }
+
+    public Vehicle() throws EOFInputException {
+        setVehicleParams();
     }
 
     public Vehicle(String key) throws EOFInputException, NullException {
@@ -181,10 +180,8 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
     private void setKey(String key) throws NullException {
         if(key == null || key.equals("")) throw new NullException("Key can not be NULL or empty");
 
-        if(collection != null) {
-            Object[] arr = collection.stream().filter(vehicle -> vehicle.getKey().equals(key)).toArray();
-            if (arr.length > 0) throw new NullException("Vehicle with this key is already in collection");
-        }
+        if(collection != null && collection.stream().filter(vehicle -> vehicle.getKey().equals(key)).count() > 0)
+            throw new NullException("Vehicle with this key is already in collection");
 
         this.key = key;
     }
@@ -192,10 +189,8 @@ public class Vehicle implements Comparable<Vehicle>, Serializable
     private void setID(Long ID) throws InputException {
         if(ID == null) throw new NullException("ID can not be NULL");
 
-        if(collection != null) {
-            Object[] arr = collection.stream().filter(vehicle -> vehicle.getID().equals(ID)).toArray();
-            if (arr.length > 0) throw new InputException("Vehicle with this ID is already in collection");
-        }
+        if(collection != null && collection.stream().filter(vehicle -> vehicle.getID().equals(ID)).count() > 0)
+            throw new InputException("Vehicle with this ID is already in collection");
 
         this.id = ID;
     }
